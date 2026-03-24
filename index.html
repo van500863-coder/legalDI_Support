@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="km">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ប្រព័ន្ធសុំច្បាប់ - Leave Request System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Suwannaphum:wght@300;400;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Suwannaphum', sans-serif;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+        }
+
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+
+        /* រចនាប័ទ្មសម្រាប់គែមសំបុត្រ (Ticket Cutout Effect) */
+        .ticket-cutout {
+            position: relative;
+        }
+
+        .ticket-cutout::before,
+        .ticket-cutout::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 30px;
+            height: 30px;
+            background-color: #e0e7ff;
+            /* ពណ៌ background ខាងក្រោយ */
+            border-radius: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+        }
+
+        .ticket-cutout::before {
+            left: -15px;
+            box-shadow: inset -1px 0 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .ticket-cutout::after {
+            right: -15px;
+            box-shadow: inset 1px 0 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .ticket-divider {
+            border-top: 2px dashed #e2e8f0;
+            margin: 0 15px;
+            position: relative;
+            top: 15px;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 min-h-screen flex items-center justify-center p-4">
+
+    <div id="app" class="w-full max-w-2xl">
+
+        <div class="text-center mb-8" v-if="!isApproved">
+            <h1 class="text-3xl md:text-4xl font-bold text-indigo-900 mb-2">
+                <i class="fas fa-file-signature text-indigo-600 mr-2"></i>ប្រព័ន្ធសុំច្បាប់
+            </h1>
+        </div>
+
+        <div v-if="!isPending && !isApproved" class="glass-card rounded-3xl p-6 md:p-8 border-t-4 border-indigo-500">
+            <form @submit.prevent="submitLeaveRequest" class="space-y-6">
+
+                <div class="relative z-50">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">ឈ្មោះអ្នកសុំច្បាប់</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-400"><i
+                                class="fas fa-user-edit"></i></span>
+                        <input type="text" v-model="searchQuery" @input="filterNames" placeholder="វាយឈ្មោះនៅទីនេះ..."
+                            class="w-full pl-11 pr-4 py-3.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                            required :disabled="isLoadingUsers">
+                    </div>
+                    <div v-if="isLoadingUsers" class="absolute right-4 top-4 text-indigo-500"><i
+                            class="fas fa-spinner fa-spin"></i></div>
+
+                    <ul v-if="showDropdown && filteredUsers.length > 0"
+                        class="absolute z-10 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl max-h-56 overflow-y-auto custom-scroll">
+                        <li v-for="user in filteredUsers" :key="user.name" @click="selectUser(user)"
+                            class="px-5 py-3 hover:bg-indigo-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+                            <span class="font-bold text-gray-800">{{ user.name }}</span> <span
+                                class="text-gray-400 mx-1">|</span> <span class="text-sm text-indigo-600 font-medium">{{
+                                user.department }}</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100/50">
+                    <div><label
+                            class="text-[11px] text-gray-500 uppercase tracking-wider font-bold block mb-1">ភេទ</label>
+                        <p class="font-semibold text-gray-800">{{ form.gender || '---' }}</p>
+                    </div>
+                    <div><label
+                            class="text-[11px] text-gray-500 uppercase tracking-wider font-bold block mb-1">ថ្នាក់</label>
+                        <p class="font-semibold text-gray-800">{{ form.grade || '---' }}</p>
+                    </div>
+                    <div><label
+                            class="text-[11px] text-gray-500 uppercase tracking-wider font-bold block mb-1">ជំនាន់</label>
+                        <p class="font-semibold text-gray-800">{{ form.generation || '---' }}</p>
+                    </div>
+                    <div><label
+                            class="text-[11px] text-gray-500 uppercase tracking-wider font-bold block mb-1">ផ្នែក</label>
+                        <p class="font-semibold text-indigo-700">{{ form.department || '---' }}</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">ប្រភេទច្បាប់</label>
+                    <div class="flex space-x-3">
+                        <label class="flex-1 cursor-pointer">
+                            <input type="radio" v-model="form.leaveType" value="ច្បាប់ឈឺ" class="peer hidden" required>
+                            <div
+                                class="text-center py-3 rounded-xl border-2 border-gray-200 peer-checked:border-rose-500 peer-checked:bg-rose-50 peer-checked:text-rose-700 transition-all font-medium">
+                                <i class="fas fa-notes-medical mr-2"></i>ច្បាប់ឈឺ</div>
+                        </label>
+                        <label class="flex-1 cursor-pointer">
+                            <input type="radio" v-model="form.leaveType" value="ច្បាប់ចេញក្រៅ" class="peer hidden"
+                                required>
+                            <div
+                                class="text-center py-3 rounded-xl border-2 border-gray-200 peer-checked:border-indigo-500 peer-checked:bg-indigo-50 peer-checked:text-indigo-700 transition-all font-medium">
+                                <i class="fas fa-walking mr-2"></i>ច្បាប់ចេញក្រៅ</div>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">រយៈពេលច្បាប់</label>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <label v-for="dur in ['មួយព្រឹក', 'មួយរសៀល', 'មួយយប់', 'មួយថ្ងៃពេញ']" :key="dur"
+                            class="cursor-pointer">
+                            <input type="radio" v-model="form.duration" :value="dur" class="peer hidden" required>
+                            <div
+                                class="text-center text-sm py-2.5 rounded-lg border border-gray-200 peer-checked:bg-indigo-600 peer-checked:border-indigo-600 peer-checked:text-white transition-all font-medium">
+                                {{ dur }}</div>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">មូលហេតុ</label>
+                    <textarea v-model="form.reason" rows="2" placeholder="សរសេរមូលហេតុនៅទីនេះ..."
+                        class="w-full p-3.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                        required></textarea>
+                </div>
+
+                <button type="submit"
+                    class="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-[0.98] flex justify-center items-center text-lg">
+                    <span v-if="isSubmitting"><i class="fas fa-circle-notch fa-spin mr-2"></i>កំពុងបញ្ជូន...</span>
+                    <span v-else>បញ្ជូនសំណើសុំច្បាប់ <i class="fas fa-paper-plane ml-2"></i></span>
+                </button>
+            </form>
+        </div>
+
+        <div v-else-if="isPending" class="glass-card rounded-3xl p-12 text-center border-t-4 border-yellow-400">
+            <div class="relative inline-block mb-6">
+                <div class="absolute inset-0 bg-yellow-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
+                <i class="fas fa-hourglass-half text-6xl text-yellow-500 relative z-10 animate-bounce"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-3">កំពុងរង់ចាំការអនុម័ត</h2>
+            <p class="text-gray-500 max-w-sm mx-auto">សំណើរបស់អ្នកត្រូវបានបញ្ជូនទៅប្រធានផ្នែករួចរាល់។
+                សូមរង់ចាំការបញ្ជាក់តាមរយៈ Telegram...</p>
+        </div>
+
+        <div v-else-if="isApproved" class="flex flex-col items-center animate-fade-in-up">
+
+            <div class="text-center mb-6 w-full">
+                <h1 class="text-3xl font-bold text-indigo-900"><i
+                        class="fas fa-file-signature text-indigo-600 mr-2"></i>ប្រព័ន្ធសុំច្បាប់</h1>
+                <p class="text-gray-500 mt-1">បង្កាន់ដៃច្បាប់ផ្លូវការ</p>
+            </div>
+
+            <div ref="receiptCard"
+                class="w-full max-w-sm bg-white rounded-[2rem] shadow-2xl overflow-hidden relative ticket-cutout">
+
+                <div class="bg-green-500 pt-8 pb-10 px-6 text-center text-white relative">
+                    <i class="fas fa-check-circle absolute -right-6 -top-6 text-9xl text-white opacity-10"></i>
+                    <div class="relative z-10">
+                        <div
+                            class="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full mb-3 shadow-lg">
+                            <i class="fas fa-check text-3xl text-green-500"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold mb-1">អនុម័តជោគជ័យ</h2>
+                        <p class="text-green-100 text-sm tracking-widest font-mono">{{ receiptId }}</p>
+                    </div>
+                </div>
+
+                <div class="ticket-divider"></div>
+
+                <div class="p-6 pt-8 space-y-4 bg-white relative z-10">
+                    <div class="flex justify-between items-center pb-3 border-b border-gray-100">
+                        <span class="text-gray-500 text-sm"><i
+                                class="fas fa-user text-gray-400 mr-2 w-4"></i>ឈ្មោះ៖</span>
+                        <span class="font-bold text-gray-900 text-right">{{ form.name }}</span>
+                    </div>
+                    <div class="flex justify-between items-center pb-3 border-b border-gray-100">
+                        <span class="text-gray-500 text-sm"><i
+                                class="fas fa-tag text-gray-400 mr-2 w-4"></i>ប្រភេទច្បាប់៖</span>
+                        <span class="font-bold text-indigo-600 text-right">{{ form.leaveType }}</span>
+                    </div>
+                    <div class="flex justify-between items-center pb-3 border-b border-gray-100">
+                        <span class="text-gray-500 text-sm"><i
+                                class="fas fa-clock text-gray-400 mr-2 w-4"></i>រយៈពេល៖</span>
+                        <span class="font-bold text-gray-900 text-right">{{ form.duration }}</span>
+                    </div>
+                    <div class="flex justify-between items-center pb-3 border-b border-gray-100">
+                        <span class="text-gray-500 text-sm"><i
+                                class="fas fa-building text-gray-400 mr-2 w-4"></i>ផ្នែក៖</span>
+                        <span class="font-bold text-gray-900 text-right">{{ form.department }}</span>
+                    </div>
+                    <div class="flex justify-between items-center pb-2">
+                        <span class="text-gray-500 text-sm"><i
+                                class="fas fa-calendar-alt text-gray-400 mr-2 w-4"></i>បង្កើតនៅ៖</span>
+                        <span class="font-bold text-gray-900 text-right text-sm">{{ approvedDate }}</span>
+                    </div>
+
+                    <div class="flex flex-col items-center justify-center pt-6 pb-2">
+                        <img :src="`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=VALID_LEAVE_${receiptId}`"
+                            alt="QR Code" class="w-24 h-24 p-1 border border-gray-200 rounded-lg">
+                        <span class="text-[9px] text-gray-400 mt-2 font-mono">Verify Hash: {{ receiptId.toLowerCase()
+                            }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full max-w-sm grid grid-cols-2 gap-3 mt-8">
+                <button @click="downloadPDF"
+                    class="bg-gray-800 text-white py-3.5 rounded-xl flex flex-col items-center justify-center hover:bg-gray-900 transition-colors shadow-lg shadow-gray-200">
+                    <i class="fas fa-file-pdf text-xl mb-1"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider">រក្សាទុកជា PDF</span>
+                </button>
+                <button @click="downloadImage"
+                    class="bg-gray-800 text-white py-3.5 rounded-xl flex flex-col items-center justify-center hover:bg-gray-900 transition-colors shadow-lg shadow-gray-200">
+                    <i class="fas fa-image text-xl mb-1"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider">រក្សាទុកជារូបភាព</span>
+                </button>
+            </div>
+
+            <button @click="resetForm"
+                class="w-full max-w-sm border-2 border-gray-300 text-gray-600 bg-white hover:bg-gray-50 font-bold py-3.5 rounded-xl mt-4 transition-colors">
+                ត្រឡប់ក្រោយ / សុំថ្មី
+            </button>
+
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js'
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+        // 🔴 ដាក់ API Key Firebase របស់អ្នកវិញនៅទីនេះ
+        const firebaseConfig = {
+            apiKey: "AIzaSyDMdxkIremHE5ig863ZTAEOvdf0WH2PoIw",
+            authDomain: "legalsystem-37879.firebaseapp.com",
+            projectId: "legalsystem-37879",
+            storageBucket: "legalsystem-37879.firebasestorage.app",
+            messagingSenderId: "1010802343026",
+            appId: "1:1010802343026:web:7b2ca53fcd97eb73ee96eb",
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // 🔴 ដាក់ Web App URL របស់ Apps Script របស់អ្នកវិញនៅទីនេះ
+        const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwcv2iQ24ex_ZfQXEeIYskuQpaN1YAlGYPbqjw87moMPmtmCOIb7GoY1Ghyb_MoUojG2A/exec';
+
+        createApp({
+            data() {
+                return {
+                    searchQuery: '', showDropdown: false, isSubmitting: false, isPending: false, isApproved: false, isLoadingUsers: true,
+                    form: { name: '', gender: '', grade: '', generation: '', department: '', leaveType: '', duration: '', reason: '' },
+                    dbUsers: [], filteredUsers: [], currentDocId: null,
+                    receiptId: '', approvedDate: '' // អថេរថ្មីសម្រាប់សំបុត្រ
+                }
+            },
+            mounted() {
+                this.fetchUsersFromSheet();
+            },
+            methods: {
+                async fetchUsersFromSheet() {
+                    try {
+                        const response = await fetch(GAS_WEB_APP_URL);
+                        this.dbUsers = await response.json();
+                    } catch (error) {
+                        console.error("Error fetching users:", error);
+                    } finally {
+                        this.isLoadingUsers = false;
+                    }
+                },
+                filterNames() {
+                    this.showDropdown = true;
+                    if (this.searchQuery.trim() === '') return this.filteredUsers = [];
+                    this.filteredUsers = this.dbUsers.filter(u => u.name.toLowerCase().includes(this.searchQuery.toLowerCase()));
+                },
+                selectUser(user) {
+                    this.form = { ...this.form, ...user };
+                    this.searchQuery = user.name;
+                    this.showDropdown = false;
+                },
+                generateReceiptData() {
+                    // បង្កើតលេខកូដសម្ងាត់ និងម៉ោងអនុម័ត
+                    const randomStr = Math.random().toString(36).substr(2, 5).toUpperCase();
+                    this.receiptId = `DOSS-${randomStr}`;
+
+                    const now = new Date();
+                    const options = { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+                    this.approvedDate = now.toLocaleDateString('km-KH', options);
+                },
+                async submitLeaveRequest() {
+                    if (!this.form.name) return alert("សូមជ្រើសរើសឈ្មោះ");
+                    this.isSubmitting = true;
+
+                    try {
+                        const docRef = await addDoc(collection(db, "leave_requests"), {
+                            ...this.form,
+                            status: 'pending',
+                            timestamp: new Date()
+                        });
+                        this.currentDocId = docRef.id;
+
+                        await fetch(GAS_WEB_APP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({ ...this.form, docId: docRef.id })
+                        });
+
+                        this.isSubmitting = false;
+                        this.isPending = true;
+
+                        // រង់ចាំលទ្ធផលពី Telegram
+                        onSnapshot(doc(db, "leave_requests", docRef.id), (document) => {
+                            const data = document.data();
+                            if (data && data.status === 'approved') {
+                                this.isPending = false;
+                                this.generateReceiptData(); // បង្កើតទិន្នន័យបង្កាន់ដៃ
+                                this.isApproved = true;
+                            } else if (data && data.status === 'rejected') {
+                                alert("សំណើរបស់អ្នកត្រូវបានបដិសេធដោយប្រធានផ្នែក!");
+                                this.resetForm();
+                            }
+                        });
+
+                    } catch (error) {
+                        alert("មានបញ្ហា៖ " + error.message);
+                        this.isSubmitting = false;
+                    }
+                },
+                resetForm() {
+                    this.isApproved = false; this.isPending = false; this.searchQuery = '';
+                    this.form = { name: '', gender: '', grade: '', generation: '', department: '', leaveType: '', duration: '', reason: '' };
+                },
+
+                // មុខងាររក្សាទុកជារូបភាព (Save as Image)
+                async downloadImage() {
+                    const element = this.$refs.receiptCard;
+                    const canvas = await html2canvas(element, { scale: 2, backgroundColor: null });
+                    const image = canvas.toDataURL("image/png");
+                    const link = document.createElement('a');
+                    link.href = image;
+                    link.download = `Leave_Pass_${this.form.name}.png`;
+                    link.click();
+                },
+
+                // មុខងាររក្សាទុកជា PDF (Save as PDF)
+                async downloadPDF() {
+                    window.jspdf = window.jspdf || {};
+                    const { jsPDF } = window.jspdf;
+
+                    const element = this.$refs.receiptCard;
+                    const canvas = await html2canvas(element, { scale: 2 });
+                    const imgData = canvas.toDataURL('image/png');
+
+                    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const imgWidth = 100; // កំណត់ទំហំទទឹងសំបុត្រក្នុង PDF (គិតជា mm)
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    const marginX = (pdfWidth - imgWidth) / 2; // ចំកណ្ដាល
+
+                    pdf.addImage(imgData, 'PNG', marginX, 20, imgWidth, imgHeight);
+                    pdf.save(`Leave_Pass_${this.form.name}.pdf`);
+                }
+            }
+        }).mount('#app')
+    </script>
+
+    <style>
+        /* ចលនាពេលលោតចេញបង្កាន់ដៃ */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-in-up {
+            animation: fadeInUp 0.5s ease-out forwards;
+        }
+    </style>
+</body>
+
+</html>
